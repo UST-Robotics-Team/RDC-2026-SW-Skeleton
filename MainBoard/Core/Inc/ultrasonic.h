@@ -1,6 +1,5 @@
 #ifndef ULTRASONIC_GPIO_H
 #define ULTRASONIC_GPIO_H
-#include "sensors.h"
 /* GPIO and timer initialization belong to CubeMX. Student functions operate
    the generated hardware: PA0 Trig, PA1 Echo, TIM2 at one count per us. */
 HAL_StatusTypeDef Ultrasonic_Start(void);

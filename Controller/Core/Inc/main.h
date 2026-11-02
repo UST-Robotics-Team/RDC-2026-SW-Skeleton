@@ -111,6 +111,16 @@ void Error_Handler(void);
 #define LED1_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
+#define __forceinline __attribute__((__always_inline__)) inline
+
+#define gpio_set(gpio) HAL_GPIO_WritePin(gpio##_GPIO_Port, gpio##_Pin, GPIO_PIN_SET)
+#define gpio_reset(gpio) HAL_GPIO_WritePin(gpio##_GPIO_Port, gpio##_Pin, GPIO_PIN_RESET)
+#define gpio_toggle(gpio) HAL_GPIO_TogglePin(gpio##_GPIO_Port, gpio##_Pin)
+#define gpio_read(gpio) HAL_GPIO_ReadPin(gpio##_GPIO_Port, gpio##_Pin)
+#define led_on(led) gpio_reset(led)
+#define led_off(led) gpio_set(led)
+#define led_toggle(led) gpio_toggle(led)
+#define btn_read(btn) (gpio_read(btn) == GPIO_PIN_RESET)
 
 /* USER CODE END Private defines */
 

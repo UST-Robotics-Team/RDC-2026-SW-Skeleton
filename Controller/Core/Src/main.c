@@ -24,7 +24,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "tutorial_app.h"
 #include "lcd/lcd.h"
 #include "lcd/lcd_graphics.h"
 
@@ -106,9 +105,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* Add classwork code here, before the screen update. */
-    TutorialApp_Update();
-    /* TutorialApp_Update draws and commits a complete TFT frame. */
   }
   /* USER CODE END 3 */
 }
