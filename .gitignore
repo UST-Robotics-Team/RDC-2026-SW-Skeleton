@@ -1,26 +1,12 @@
-# macOS
-.DS_Store
-._*
-
-# Build output (CMake / STM32Cube)
-build/
-cmake-build-*/
-Debug/
-Release/
-*.elf
-*.bin
-*.hex
-*.map
-*.list
-*.o
-*.d
-
-# STM32CubeMX scratch files
+build
 mx.scratch
-
-# Editor / IDE
-.vscode/
-.settings/
-
-# CubeIDE / Eclipse metadata
-.metadata/
+.clangd
+.DS_Store
+.settings
+.vscode
+cmake
+*.s
+.mxproject
+# CMakePresets.json
+Drivers
+# STM32F103XX_FLASH.ld
