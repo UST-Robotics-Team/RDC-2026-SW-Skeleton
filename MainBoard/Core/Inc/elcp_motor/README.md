@@ -41,7 +41,8 @@ const ELCP_Motor_State_t *s = ELCP_Motor_GetState(MOTOR_J1);
 // s->rpm                signed speed in RPM (refreshed 1 Hz)
 ```
 
-> [!CAUTION] > **SAFETY NOTICE: BE CAREFUL WHEN FLASHING WITH ELCP MOTORS CONNECTED!**
+> [!CAUTION] 
+> **SAFETY NOTICE: BE CAREFUL WHEN FLASHING WITH ELCP MOTORS CONNECTED!**
 > Always disconnect motor driver power (or lift robot drive wheels off the ground) while flashing code. During ST-LINK programmer connection, target erase, and MCU reset, timer and GPIO outputs can float momentarily before firmware initializes and establishes zero PWM.
 
 ## Example
