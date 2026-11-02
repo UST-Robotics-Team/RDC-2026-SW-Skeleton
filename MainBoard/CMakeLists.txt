@@ -47,6 +47,12 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/lcd.c
     Core/Src/lcd_graphics.c
     Core/Src/robotics_logo.c
+    Core/Src/ir_sensor.c
+    Core/Src/ultrasonic.c
+    Core/Src/tof_sensor.c
+    Core/Src/vl53l1_platform.c
+    Core/Src/elcp_motor/elcp_motor.c
+    Core/Src/VL53L1X/vl53l1x_subset.c
     # Add user sources here
 )
 
@@ -68,17 +74,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
 
     # Add user defined libraries
-)
-
-
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    Core/Src/ir_sensor.c
-    Core/Src/ultrasonic.c
-    Core/Src/ultrasonic_gpio_port.c
-    Core/Src/tof_sensor.c
-    Core/Src/vl53l1_platform.c
-    Core/Src/elcp_motor/elcp_motor.c
-    Drivers/VL53L1X/vl53l1x_subset.c
 )
 
 add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD

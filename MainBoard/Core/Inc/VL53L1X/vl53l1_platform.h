@@ -1,5 +1,5 @@
-#ifndef VL53L1_TUTORIAL_PLATFORM_H
-#define VL53L1_TUTORIAL_PLATFORM_H
+#ifndef VL53L1_PLATFORM_H
+#define VL53L1_PLATFORM_H
 #include <stdint.h>
 void VL53L1_PlatformBegin(void);
 int8_t VL53L1_PlatformError(void);

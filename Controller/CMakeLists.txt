@@ -69,13 +69,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     # Add user defined libraries
 )
 
-
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE Core/Src/student_tasks.c)
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    Core/Src/tutorial_app.c
-    Core/Src/joystick.c
-    Core/Src/joystick_normalization.c
-)
 add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.hex
     COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.bin

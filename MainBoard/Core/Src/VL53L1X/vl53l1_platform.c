@@ -1,7 +1,5 @@
 #include "vl53l1_platform.h"
 #include "main.h"
-/* Add i2c.h after enabling I2C2 and generating code in the TOF exercise. */
-#include "tutorial_config.h"
 /* One foreground sensor operation at a time; no ISR/RTOS callers. */
 static int8_t first_error;
 void VL53L1_PlatformBegin(void) { first_error=0; }
