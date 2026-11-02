@@ -94,7 +94,6 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   tft_init(PIN_ON_TOP, BLACK, WHITE, CYAN, DARK_GREY);
-  TutorialApp_Init();
 
   /* USER CODE END 2 */
 
