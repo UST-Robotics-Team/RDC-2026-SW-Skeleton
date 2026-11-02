@@ -100,10 +100,10 @@ int main(void)
   MX_TIM12_Init();
   /* USER CODE BEGIN 2 */
   // Initialize and stop motors on startup
-  ELCP_Motor_Init(MOTOR_J7);
-  ELCP_Motor_Init(MOTOR_J8);
-  ELCP_Motor_Stop(MOTOR_J7);
-  ELCP_Motor_Stop(MOTOR_J8);
+  ELCP_Motor_Init(MOTOR_J1);
+  ELCP_Motor_Init(MOTOR_J3);
+  ELCP_Motor_Stop(MOTOR_J1);
+  ELCP_Motor_Stop(MOTOR_J3);
 
   tft_init(PIN_ON_TOP, BLACK, WHITE, CYAN, DARK_GREY);
 

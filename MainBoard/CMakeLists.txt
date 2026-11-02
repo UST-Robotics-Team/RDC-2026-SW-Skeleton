@@ -49,8 +49,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/robotics_logo.c
     Core/Src/ir_sensor.c
     Core/Src/ultrasonic.c
-    Core/Src/tof_sensor.c
-    Core/Src/vl53l1_platform.c
+    Core/Src/VL53L1X/vl53l1_platform.c
     Core/Src/elcp_motor/elcp_motor.c
     Core/Src/VL53L1X/vl53l1x_subset.c
     # Add user sources here
@@ -81,4 +80,4 @@ add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.bin
 )
 
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE Drivers/VL53L1X)
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE Core/Inc/VL53L1X)

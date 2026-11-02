@@ -1,6 +1,6 @@
 # Mainboard Resources
 
-> [!WARNING]
+> [!CAUTION]
 > If ELCP motors are connected, disconnect motor power or keep the wheels
 > off the ground while flashing — GPIO lines float briefly during reset.
 

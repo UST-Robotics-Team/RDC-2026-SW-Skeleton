@@ -6,19 +6,19 @@
 #include "tim.h"
 
 /**
- * @brief FG pulses per output-shaft revolution, used for rpm = pps * 60 / ppr. 
+ * @brief FB pulses per output-shaft revolution, used for rpm = pps * 60 / ppr. 
  * @note NOTICE: This number is for power source of 12V
  */
-#ifndef ELCP_FG_PULSES_PER_REV
-#define ELCP_FG_PULSES_PER_REV 114.0f
+#ifndef ELCP_FB_PULSES_PER_REV
+#define ELCP_FB_PULSES_PER_REV 114.0f
 #endif
 
 /**
  * @brief Motor connector selector.
  */
 typedef enum {
-  MOTOR_J7 = 0, /**< PWM PC7 / DIR PC9 / FG PC8 */
-  MOTOR_J8,     /**< PWM PB14 / DIR PC6 / FG PB15 */
+  MOTOR_J1 = 0, /**< PWM PB14 / DIR PC6 / FB PB15 */
+  MOTOR_J3,     /**< PWM PC7 / DIR PC9 / FB PC8 */
   ELCP_MOTOR_COUNT
 } ELCP_Motor_ID;
 
@@ -26,9 +26,9 @@ typedef enum {
  * @brief Read-only view of a motor's runtime state.
  */
 typedef struct {
-  volatile float current_speed_pct; /**< Commanded speed, -100.0 to +100.0 */
-  volatile int32_t pulse_count;     /**< Signed FG pulse count */
-  volatile float pps;               /**< FG pulses per second (updated once per second) */
+  volatile float current_speed_pct; /**< Commanded speed, -100.0 (full CCW) to +100.0 (full CW) */
+  volatile int32_t pulse_count;     /**< Signed FB pulse count */
+  volatile float pps;               /**< FB pulses per second (updated once per second) */
   volatile float rpm;               /**< Signed speed in RPM (updated once per second) */
 } ELCP_Motor_State_t;
 
@@ -36,15 +36,15 @@ typedef struct {
 
 /**
   * @brief  Initializes a motor: clears its state and starts PWM output.
-  * @param  id  Motor to initialize (MOTOR_J7 or MOTOR_J8)
+  * @param  id  Motor to initialize (MOTOR_J1 or MOTOR_J3)
   * @retval None
   */
 void ELCP_Motor_Init(ELCP_Motor_ID id);
 
 /**
   * @brief  Sets the motor speed and drives the DIR pin.
-  * @param  id             Motor to drive (MOTOR_J7 or MOTOR_J8)
-  * @param  speed_percent  -100.0 (full reverse) to +100.0 (full forward)
+  * @param  id             Motor to drive (MOTOR_J1 or MOTOR_J3)
+  * @param  speed_percent  -100.0 (full CCW) to +100.0 (full CW)
   * @retval None
   */
 void ELCP_Motor_SetSpeed(ELCP_Motor_ID id, float speed_percent);
@@ -64,9 +64,9 @@ void ELCP_Motor_Stop(ELCP_Motor_ID id);
 const ELCP_Motor_State_t *ELCP_Motor_GetState(ELCP_Motor_ID id);
 
 /**
-  * @brief  Overrides the FG pulses-per-revolution used for the rpm estimate.
+  * @brief  Overrides the FB pulses-per-revolution used for the rpm estimate.
   * @param  id              Motor to configure
-  * @param  pulses_per_rev  FG pulses per output-shaft revolution (> 0)
+  * @param  pulses_per_rev  FB pulses per output-shaft revolution (> 0)
   * @retval None
   */
 void ELCP_Motor_SetPulsesPerRev(ELCP_Motor_ID id, float pulses_per_rev);
@@ -74,16 +74,16 @@ void ELCP_Motor_SetPulsesPerRev(ELCP_Motor_ID id, float pulses_per_rev);
 /* ----- Background / ISR (wired up in stm32f4xx_it.c) ----- */
 
 /**
-  * @brief  Handles one FG pulse; updates the motor's pulse count.
+  * @brief  Handles one FB pulse; updates the motor's pulse count.
   * @param  id        Motor that raised the interrupt
-  * @param  GPIO_Pin  Pin that triggered the EXTI (must match the motor's FG pin)
+  * @param  GPIO_Pin  Pin that triggered the EXTI (must match the motor's FB pin)
   * @retval None
   */
-void ELCP_Motor_FG_IRQHandler(ELCP_Motor_ID id, uint16_t GPIO_Pin);
+void ELCP_Motor_FB_IRQHandler(ELCP_Motor_ID id, uint16_t GPIO_Pin);
 
 /**
   * @brief  Publishes pps and rpm into the motor state (refreshes once per second).
-  *         Call once per main-loop pass; rpm uses ELCP_FG_PULSES_PER_REV or the
+  *         Call once per main-loop pass; rpm uses ELCP_FB_PULSES_PER_REV or the
   *         value set by ELCP_Motor_SetPulsesPerRev().
   * @param  id  Motor to update
   * @retval None

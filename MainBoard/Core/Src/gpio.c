@@ -57,7 +57,7 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(TFT_RES_GPIO_Port, TFT_RES_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, TFT_DC_Pin|TFT_CS_Pin|ELCP_J8_DIR_Pin|ELCP_J7_DIR_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, TFT_DC_Pin|TFT_CS_Pin|ELCP_J1_DIR_Pin|ELCP_J3_DIR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TFT_BL_GPIO_Port, TFT_BL_Pin, GPIO_PIN_RESET);
@@ -115,24 +115,24 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : ELCP_J8_FG_Pin */
-  GPIO_InitStruct.Pin = ELCP_J8_FG_Pin;
+  /*Configure GPIO pin : ELCP_J1_FB_Pin */
+  GPIO_InitStruct.Pin = ELCP_J1_FB_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(ELCP_J8_FG_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(ELCP_J1_FB_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : ELCP_J8_DIR_Pin ELCP_J7_DIR_Pin */
-  GPIO_InitStruct.Pin = ELCP_J8_DIR_Pin|ELCP_J7_DIR_Pin;
+  /*Configure GPIO pins : ELCP_J1_DIR_Pin ELCP_J3_DIR_Pin */
+  GPIO_InitStruct.Pin = ELCP_J1_DIR_Pin|ELCP_J3_DIR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : ELCP_J7_FG_Pin */
-  GPIO_InitStruct.Pin = ELCP_J7_FG_Pin;
+  /*Configure GPIO pin : ELCP_J3_FB_Pin */
+  GPIO_InitStruct.Pin = ELCP_J3_FB_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(ELCP_J7_FG_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(ELCP_J3_FB_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);

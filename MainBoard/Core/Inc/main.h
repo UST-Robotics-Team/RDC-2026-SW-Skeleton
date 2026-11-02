@@ -89,20 +89,20 @@ void Error_Handler(void);
 #define TFT_BL_GPIO_Port GPIOB
 #define BTN1_Pin GPIO_PIN_1
 #define BTN1_GPIO_Port GPIOB
-#define ELCP_J8_PWM_Pin GPIO_PIN_14
-#define ELCP_J8_PWM_GPIO_Port GPIOB
-#define ELCP_J8_FG_Pin GPIO_PIN_15
-#define ELCP_J8_FG_GPIO_Port GPIOB
-#define ELCP_J8_FG_EXTI_IRQn EXTI15_10_IRQn
-#define ELCP_J8_DIR_Pin GPIO_PIN_6
-#define ELCP_J8_DIR_GPIO_Port GPIOC
-#define ELCP_J7_PWM_Pin GPIO_PIN_7
-#define ELCP_J7_PWM_GPIO_Port GPIOC
-#define ELCP_J7_FG_Pin GPIO_PIN_8
-#define ELCP_J7_FG_GPIO_Port GPIOC
-#define ELCP_J7_FG_EXTI_IRQn EXTI9_5_IRQn
-#define ELCP_J7_DIR_Pin GPIO_PIN_9
-#define ELCP_J7_DIR_GPIO_Port GPIOC
+#define ELCP_J1_PWM_Pin GPIO_PIN_14
+#define ELCP_J1_PWM_GPIO_Port GPIOB
+#define ELCP_J1_FB_Pin GPIO_PIN_15
+#define ELCP_J1_FB_GPIO_Port GPIOB
+#define ELCP_J1_FB_EXTI_IRQn EXTI15_10_IRQn
+#define ELCP_J1_DIR_Pin GPIO_PIN_6
+#define ELCP_J1_DIR_GPIO_Port GPIOC
+#define ELCP_J3_PWM_Pin GPIO_PIN_7
+#define ELCP_J3_PWM_GPIO_Port GPIOC
+#define ELCP_J3_FB_Pin GPIO_PIN_8
+#define ELCP_J3_FB_GPIO_Port GPIOC
+#define ELCP_J3_FB_EXTI_IRQn EXTI9_5_IRQn
+#define ELCP_J3_DIR_Pin GPIO_PIN_9
+#define ELCP_J3_DIR_GPIO_Port GPIOC
 
 /* USER CODE BEGIN Private defines */
 #define __forceinline __attribute__((__always_inline__)) inline

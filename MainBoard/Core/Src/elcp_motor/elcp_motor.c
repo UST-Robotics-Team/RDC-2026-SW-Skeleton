@@ -11,12 +11,12 @@ typedef struct {
   uint32_t tim_channel;
   GPIO_TypeDef *dir_port;
   uint16_t dir_pin;
-  uint16_t fg_pin;
-  GPIO_TypeDef *fg_port;
-  bool invert_dir;  /**< Swaps forward/reverse polarity */
+  uint16_t fb_pin;
+  GPIO_TypeDef *fb_port;
+  bool invert_dir;  /**< Swaps CW/CCW polarity */
   bool invert_pwm;  /**< Inverts PWM duty (for active-low inputs) */
 
-  float pulses_per_rev; /**< FG pulses per output-shaft revolution (rpm scaling) */
+  float pulses_per_rev; /**< FB pulses per output-shaft revolution (rpm scaling) */
 
   bool initialized; /**< True once ELCP_Motor_Init() has run */
 
@@ -26,35 +26,36 @@ typedef struct {
 } ELCP_Motor_t;
 
 /* Hardware mapping: one motor per connector. Do not edit. */
-static ELCP_Motor_t motor_J7 = {
-    .htim = &htim8,
-    .tim_channel = TIM_CHANNEL_2,    // PWM PC7 (blue)
-    .dir_port = ELCP_J7_DIR_GPIO_Port,
-    .dir_pin = ELCP_J7_DIR_Pin,      // DIR PC9 (white)
-    .fg_pin = ELCP_J7_FG_Pin,        // FG  PC8 (yellow)
-    .fg_port = ELCP_J7_FG_GPIO_Port,
-    .invert_dir = false,
-    .invert_pwm = false,
-    .pulses_per_rev = ELCP_FG_PULSES_PER_REV
-};
-
-static ELCP_Motor_t motor_J8 = {
+static ELCP_Motor_t motor_J1 = {
     .htim = &htim12,
     .tim_channel = TIM_CHANNEL_1,    // PWM PB14 (blue)
-    .dir_port = ELCP_J8_DIR_GPIO_Port,
-    .dir_pin = ELCP_J8_DIR_Pin,      // DIR PC6 (white)
-    .fg_pin = ELCP_J8_FG_Pin,        // FG  PB15 (yellow)
-    .fg_port = ELCP_J8_FG_GPIO_Port,
+    .dir_port = ELCP_J1_DIR_GPIO_Port,
+    .dir_pin = ELCP_J1_DIR_Pin,      // DIR PC6 (white)
+    .fb_pin = ELCP_J1_FB_Pin,        // FB  PB15 (yellow)
+    .fb_port = ELCP_J1_FB_GPIO_Port,
     .invert_dir = false,
     .invert_pwm = false,
-    .pulses_per_rev = ELCP_FG_PULSES_PER_REV
+    .pulses_per_rev = ELCP_FB_PULSES_PER_REV
 };
 
-static ELCP_Motor_t *const motors[ELCP_MOTOR_COUNT] = {&motor_J7, &motor_J8};
+static ELCP_Motor_t motor_J3 = {
+    .htim = &htim8,
+    .tim_channel = TIM_CHANNEL_2,    // PWM PC7 (blue)
+    .dir_port = ELCP_J3_DIR_GPIO_Port,
+    .dir_pin = ELCP_J3_DIR_Pin,      // DIR PC9 (white)
+    .fb_pin = ELCP_J3_FB_Pin,        // FB  PC8 (yellow)
+    .fb_port = ELCP_J3_FB_GPIO_Port,
+    .invert_dir = false,
+    .invert_pwm = false,
+    .pulses_per_rev = ELCP_FB_PULSES_PER_REV
+};
+
+/* Order matches the ELCP_Motor_ID enum (index 0 = MOTOR_J1). */
+static ELCP_Motor_t *const motors[ELCP_MOTOR_COUNT] = {&motor_J1, &motor_J3};
 
 /**
   * @brief  Initializes a motor: clears its state and starts PWM output.
-  * @param  id  Motor to initialize (MOTOR_J7 or MOTOR_J8)
+  * @param  id  Motor to initialize (MOTOR_J1 or MOTOR_J3)
   * @retval None
   */
 void ELCP_Motor_Init(ELCP_Motor_ID id) {
@@ -74,8 +75,8 @@ void ELCP_Motor_Init(ELCP_Motor_ID id) {
 
 /**
   * @brief  Sets the motor speed and drives the DIR pin.
-  * @param  id             Motor to drive (MOTOR_J7 or MOTOR_J8)
-  * @param  speed_percent  -100.0 (full reverse) to +100.0 (full forward)
+  * @param  id             Motor to drive (MOTOR_J1 or MOTOR_J3)
+  * @param  speed_percent  -100.0 (full CCW) to +100.0 (full CW)
   * @retval None
   */
 void ELCP_Motor_SetSpeed(ELCP_Motor_ID id, float speed_percent) {
@@ -90,13 +91,13 @@ void ELCP_Motor_SetSpeed(ELCP_Motor_ID id, float speed_percent) {
     speed_percent = -100.0f;
   motor->state.current_speed_pct = speed_percent;
 
-  // Direction from the sign of the speed
-  bool forward = (speed_percent >= 0.0f);
+  // Direction from the sign of the speed: + = CW, - = CCW
+  bool ccw = (speed_percent < 0.0f);
   if (motor->invert_dir)
-    forward = !forward;
+    ccw = !ccw;
 
   HAL_GPIO_WritePin(motor->dir_port, motor->dir_pin,
-                    forward ? GPIO_PIN_SET : GPIO_PIN_RESET);
+                    ccw ? GPIO_PIN_SET : GPIO_PIN_RESET);
 
   // Duty cycle from the timer's autoreload value
   float abs_speed = (speed_percent >= 0.0f) ? speed_percent : -speed_percent;
@@ -129,9 +130,9 @@ const ELCP_Motor_State_t *ELCP_Motor_GetState(ELCP_Motor_ID id) {
 }
 
 /**
-  * @brief  Overrides the FG pulses-per-revolution used for the rpm estimate.
+  * @brief  Overrides the FB pulses-per-revolution used for the rpm estimate.
   * @param  id              Motor to configure
-  * @param  pulses_per_rev  FG pulses per output-shaft revolution (> 0)
+  * @param  pulses_per_rev  FB pulses per output-shaft revolution (> 0)
   * @retval None
   */
 void ELCP_Motor_SetPulsesPerRev(ELCP_Motor_ID id, float pulses_per_rev) {
@@ -141,15 +142,15 @@ void ELCP_Motor_SetPulsesPerRev(ELCP_Motor_ID id, float pulses_per_rev) {
 }
 
 /**
-  * @brief  Handles one FG pulse; updates the motor's pulse count.
+  * @brief  Handles one FB pulse; updates the motor's pulse count.
   * @param  motor     Motor that raised the interrupt
-  * @param  GPIO_Pin  Pin that triggered the EXTI (must match the motor's FG pin)
+  * @param  GPIO_Pin  Pin that triggered the EXTI (must match the motor's FB pin)
   * @retval None
   */
-static void Motor_FG_IRQHandler(ELCP_Motor_t *motor, uint16_t GPIO_Pin) {
-  if (GPIO_Pin == motor->fg_pin) {
+static void Motor_FB_IRQHandler(ELCP_Motor_t *motor, uint16_t GPIO_Pin) {
+  if (GPIO_Pin == motor->fb_pin) {
     // Only count clean high levels
-    if (HAL_GPIO_ReadPin(motor->fg_port, motor->fg_pin) != GPIO_PIN_SET) {
+    if (HAL_GPIO_ReadPin(motor->fb_port, motor->fb_pin) != GPIO_PIN_SET) {
       return;
     }
 
@@ -158,7 +159,7 @@ static void Motor_FG_IRQHandler(ELCP_Motor_t *motor, uint16_t GPIO_Pin) {
       return;
     }
 
-    // Single-channel FG: direction comes from the commanded speed
+    // Single-channel FB: direction comes from the commanded speed
     if (motor->state.current_speed_pct > 0.0f) {
       motor->state.pulse_count++;
     } else {
@@ -168,15 +169,15 @@ static void Motor_FG_IRQHandler(ELCP_Motor_t *motor, uint16_t GPIO_Pin) {
 }
 
 /**
-  * @brief  Handles one FG pulse; updates the motor's pulse count.
+  * @brief  Handles one FB pulse; updates the motor's pulse count.
   * @param  id        Motor that raised the interrupt
-  * @param  GPIO_Pin  Pin that triggered the EXTI (must match the motor's FG pin)
+  * @param  GPIO_Pin  Pin that triggered the EXTI (must match the motor's FB pin)
   * @retval None
   */
-void ELCP_Motor_FG_IRQHandler(ELCP_Motor_ID id, uint16_t GPIO_Pin) {
+void ELCP_Motor_FB_IRQHandler(ELCP_Motor_ID id, uint16_t GPIO_Pin) {
   if (id >= ELCP_MOTOR_COUNT)
     return;
-  Motor_FG_IRQHandler(motors[id], GPIO_Pin);
+  Motor_FB_IRQHandler(motors[id], GPIO_Pin);
 }
 
 /**
@@ -208,8 +209,8 @@ void ELCP_Motor_UpdatePPS(ELCP_Motor_ID id) {
   * @retval None
   */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-  if (motor_J7.initialized && GPIO_Pin == motor_J7.fg_pin)
-    ELCP_Motor_FG_IRQHandler(MOTOR_J7, GPIO_Pin);
-  else if (motor_J8.initialized && GPIO_Pin == motor_J8.fg_pin)
-    ELCP_Motor_FG_IRQHandler(MOTOR_J8, GPIO_Pin);
+  if (motor_J1.initialized && GPIO_Pin == motor_J1.fb_pin)
+    ELCP_Motor_FB_IRQHandler(MOTOR_J1, GPIO_Pin);
+  else if (motor_J3.initialized && GPIO_Pin == motor_J3.fb_pin)
+    ELCP_Motor_FB_IRQHandler(MOTOR_J3, GPIO_Pin);
 }

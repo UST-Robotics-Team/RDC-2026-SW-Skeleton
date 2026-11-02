@@ -8,7 +8,7 @@ STM32 project folders:
 
 > [!Important]
 >
-> Remember to open the **individual folders** in VS Code, rather than this outer
+> Remember to open the **individual folders** in VS Code and regenerate the project in CUBEMX, rather than this outer
 > folder.
 
 Each `README.md` of the individual project folder points you to the resources
