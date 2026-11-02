@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+._*
+
+# Build output (CMake / STM32Cube)
+build/
+cmake-build-*/
+Debug/
+Release/
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+*.o
+*.d
+
+# STM32CubeMX scratch files
+mx.scratch
+
+# Editor / IDE
+.vscode/
+.settings/
+
+# CubeIDE / Eclipse metadata
+.metadata/
