@@ -39,6 +39,8 @@ const ELCP_Motor_State_t *s = ELCP_Motor_GetState(MOTOR_J1);
 // s->pulse_count        signed FB pulse count since init
 // s->pps                signed FB pulses per second (refreshed 1 Hz)
 // s->rpm                signed speed in RPM (refreshed 1 Hz)
+// s->noise_count        FB pulses rejected by the pulse-width filter
+// s->last_low_us        LOW width of the last complete FB pulse, in us
 ```
 
 > [!CAUTION] 
@@ -146,12 +148,16 @@ int main(void)
 ## Telemetry details
 
 - FB edges are captured by the timer hardware:
-  - **J1**: PB15 → **TIM12_CH2** (AF9), rising edge, `ICFilter = 10`
-  - **J3**: PC8 → **TIM3_CH3** (AF2), rising edge, `ICFilter = 10`
+  - **J1**: PB15 → **TIM12_CH2** (AF9), both edges, `ICFilter = 10`
+  - **J3**: PC8 → **TIM3_CH3** (AF2), both edges, `ICFilter = 10`
+  - CubeMX still configures rising edge; `ELCP_Motor_Init()` switches the
+    channel to both edges at runtime for the pulse-width filter below, so
+    regenerating code does not undo it.
 - `ELCP_Motor_Init(id)` arms the capture channel (`HAL_TIM_IC_Start_IT`), sets
   the timer NVIC priority and enables the interrupt. Edges are then dispatched
   through `HAL_TIM_IC_CaptureCallback()` (overridden in `elcp_motor.c`). The
-  counting rules: rising edges only, and the sign is taken from the commanded
+  counting rules: one count per pulse that passes the pulse-width filter
+  (counted on its rising edge), and the sign is taken from the commanded
   direction (the tach is single-channel, so it has no direction information of
   its own). Edges are still counted after `ELCP_Motor_Stop()` — while the
   commanded speed is 0 the last non-zero direction is used, so coast-down and
@@ -170,6 +176,33 @@ int main(void)
   a 12 V supply). Override it per motor with
   `ELCP_Motor_SetPulsesPerRev(id, ppr)` if you use a different motor or
   supply voltage.
+
+### Pulse-width noise filter
+
+FB idles **high**, so a tach pulse is high → low → high. Motor noise can still
+produce short low glitches that get past the ~µs hardware `ICFilter`, and each
+one used to count as a pulse (visible as `pulse_count` creeping while the motor
+is stopped).
+
+On every FB edge the ISR reads the pin to tell falling from rising, and
+timestamps the edge with the Cortex-M4 **DWT cycle counter** (`DWT->CYCCNT`,
+`SystemCoreClock` = 168 MHz, ~6 ns, wraps every ~25 s; unsigned subtraction
+handles the wrap). Neither capture timer can be used for this: TIM12 wraps every
+100 µs and TIM3 every 780 µs (see below).
+
+```
+low_us = (t_rise - t_fall) / (SystemCoreClock / 1e6)
+low_us >= ELCP_FB_MIN_LOW_US  -> valid pulse, pulse_count += dir
+low_us <  ELCP_FB_MIN_LOW_US  -> noise, dropped, noise_count++
+```
+
+`ELCP_FB_MIN_LOW_US` defaults to **1000 µs** and can be overridden with a
+compiler define. Check it against your scope: the filter also rejects real
+pulses whose low part is shorter than the threshold, so at 50 % duty it caps
+valid counting at about `1e6 / (2 × ELCP_FB_MIN_LOW_US)` pps (500 pps ≈ 260 rpm
+at 114 ppr for the default). If `noise_count` climbs fast while the motor spins
+hard, lower the threshold. `last_low_us` shows the width of the last pulse for
+tuning.
 
 ### Capture clock — and why speed is still measured over a window
 

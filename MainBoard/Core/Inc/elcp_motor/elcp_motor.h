@@ -14,6 +14,14 @@
 #endif
 
 /**
+ * @brief Minimum FB LOW time (us) for a valid encoder pulse. FB idles HIGH; a LOW shorter
+ *        than this is treated as noise and not counted (see Motor_FB_Filter()).
+ */
+#ifndef ELCP_FB_MIN_LOW_US
+#define ELCP_FB_MIN_LOW_US 1000U  /* caps valid counting at ~1e6 / (2 * this) pps at 50 % duty */
+#endif
+
+/**
  * @brief Motor connector selector.
  */
 typedef enum {
@@ -30,6 +38,8 @@ typedef struct {
   volatile int32_t pulse_count;     /**< Signed FB pulse count (keeps counting while coasting) */
   volatile float pps;               /**< Signed FB pulses per second (updated once per second) */
   volatile float rpm;               /**< Signed speed in RPM (updated once per second) */
+  volatile uint32_t noise_count;    /**< FB pulses rejected as noise (LOW < ELCP_FB_MIN_LOW_US) */
+  volatile uint32_t last_low_us;    /**< LOW width of the last complete FB pulse, us (valid or not) */
 } ELCP_Motor_State_t;
 
 /* ----- Core API ----- */
@@ -75,8 +85,10 @@ void ELCP_Motor_SetPulsesPerRev(ELCP_Motor_ID id, float pulses_per_rev);
 /* ----- Background / ISR (input capture) -----
  *
  * FB is measured by the timer input-capture channels configured in CubeMX:
- *   J1: PB15 -> TIM12_CH2 (AF9, rising edge, ICFilter = 10)
- *   J3: PC8  -> TIM3_CH3  (AF2, rising edge, ICFilter = 10)
+ *   J1: PB15 -> TIM12_CH2 (AF9, ICFilter = 10)
+ *   J3: PC8  -> TIM3_CH3  (AF2, ICFilter = 10)
+ * ELCP_Motor_Init() switches both to BOTH edges for the pulse-width filter: a pulse is
+ * counted only if its LOW lasts >= ELCP_FB_MIN_LOW_US, timed with the DWT cycle counter.
  *
  * ELCP_Motor_Init() starts each capture channel. The TIM3 and TIM8_BRK_TIM12
  * interrupt handlers are the CubeMX-generated ones in stm32f4xx_it.c (with the
