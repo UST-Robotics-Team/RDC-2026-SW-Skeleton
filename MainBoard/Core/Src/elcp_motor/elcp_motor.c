@@ -6,21 +6,28 @@
 typedef struct {
   ELCP_Motor_State_t state; /**< State exposed via ELCP_Motor_GetState() */
 
-  /* Hardware config, fixed at init */
+  /* PWM / DIR hardware, fixed at init */
   TIM_HandleTypeDef *htim;
   uint32_t tim_channel;
   GPIO_TypeDef *dir_port;
   uint16_t dir_pin;
-  uint16_t fb_pin;
-  GPIO_TypeDef *fb_port;
   bool invert_dir;  /**< Swaps CW/CCW polarity */
   bool invert_pwm;  /**< Inverts PWM duty (for active-low inputs) */
 
+  /* FB input capture hardware, fixed at init (see MX_TIM3_Init/MX_TIM12_Init) */
+  TIM_HandleTypeDef *fb_htim;
+  uint32_t fb_channel;          /**< TIM_CHANNEL_x used for the capture */
+  uint32_t fb_active_channel;   /**< HAL_TIM_ACTIVE_CHANNEL_x reported in the callback */
+  uint32_t fb_overcapture_flag; /**< TIM_FLAG_CCxOF for that channel */
+  IRQn_Type fb_irqn;            /**< Timer interrupt that services the capture */
+
   float pulses_per_rev; /**< FB pulses per output-shaft revolution (rpm scaling) */
+
+  int8_t last_dir; /**< Last non-zero commanded direction: +1 CW, -1 CCW, 0 none */
 
   bool initialized; /**< True once ELCP_Motor_Init() has run */
 
-  /* PPS / RPM sampler state */
+  /* PPS / RPM sampler state (1 Hz) */
   uint32_t last_pps_tick;
   int32_t last_pps_count;
 } ELCP_Motor_t;
@@ -31,8 +38,11 @@ static ELCP_Motor_t motor_J1 = {
     .tim_channel = TIM_CHANNEL_1,    // PWM PB14 (blue)
     .dir_port = ELCP_J1_DIR_GPIO_Port,
     .dir_pin = ELCP_J1_DIR_Pin,      // DIR PC6 (white)
-    .fb_pin = ELCP_J1_FB_Pin,        // FB  PB15 (yellow)
-    .fb_port = ELCP_J1_FB_GPIO_Port,
+    .fb_htim = &htim12,
+    .fb_channel = TIM_CHANNEL_2,     // FB  PB15 (yellow) -> TIM12_CH2, AF9
+    .fb_active_channel = HAL_TIM_ACTIVE_CHANNEL_2,
+    .fb_overcapture_flag = TIM_FLAG_CC2OF,
+    .fb_irqn = TIM8_BRK_TIM12_IRQn,  // TIM12 shares TIM8_BRK's vector on F4
     .invert_dir = false,
     .invert_pwm = false,
     .pulses_per_rev = ELCP_FB_PULSES_PER_REV
@@ -43,8 +53,11 @@ static ELCP_Motor_t motor_J3 = {
     .tim_channel = TIM_CHANNEL_2,    // PWM PC7 (blue)
     .dir_port = ELCP_J3_DIR_GPIO_Port,
     .dir_pin = ELCP_J3_DIR_Pin,      // DIR PC9 (white)
-    .fb_pin = ELCP_J3_FB_Pin,        // FB  PC8 (yellow)
-    .fb_port = ELCP_J3_FB_GPIO_Port,
+    .fb_htim = &htim3,
+    .fb_channel = TIM_CHANNEL_3,     // FB  PC8 (yellow) -> TIM3_CH3, AF2
+    .fb_active_channel = HAL_TIM_ACTIVE_CHANNEL_3,
+    .fb_overcapture_flag = TIM_FLAG_CC3OF,
+    .fb_irqn = TIM3_IRQn,
     .invert_dir = false,
     .invert_pwm = false,
     .pulses_per_rev = ELCP_FB_PULSES_PER_REV
@@ -54,7 +67,8 @@ static ELCP_Motor_t motor_J3 = {
 static ELCP_Motor_t *const motors[ELCP_MOTOR_COUNT] = {&motor_J1, &motor_J3};
 
 /**
-  * @brief  Initializes a motor: clears its state and starts PWM output.
+  * @brief  Initializes a motor: clears its state, starts PWM output and arms
+  *         the FB input-capture channel.
   * @param  id  Motor to initialize (MOTOR_J1 or MOTOR_J3)
   * @retval None
   */
@@ -66,11 +80,23 @@ void ELCP_Motor_Init(ELCP_Motor_ID id) {
   motor->state.pulse_count = 0;
   motor->state.pps = 0.0f;
   motor->state.rpm = 0.0f;
+  motor->last_dir = 0;
   motor->last_pps_tick = HAL_GetTick();
   motor->last_pps_count = 0;
+
   HAL_TIM_PWM_Start(motor->htim, motor->tim_channel);
   ELCP_Motor_Stop(id);
+
+  /* Accept FB edges from now on, then arm the capture channel. The counter is
+   * already running after HAL_TIM_PWM_Start() (J1) or is started by
+   * HAL_TIM_IC_Start_IT() itself (J3). */
   motor->initialized = true;
+  /* CubeMX already enables these IRQs in HAL_TIM_*_MspInit(); they are set
+   * here again (idempotent) so the capture still works if the NVIC entry is
+   * ever missing from the generated code. */
+  HAL_NVIC_SetPriority(motor->fb_irqn, 0, 0);
+  HAL_NVIC_EnableIRQ(motor->fb_irqn);
+  (void)HAL_TIM_IC_Start_IT(motor->fb_htim, motor->fb_channel);
 }
 
 /**
@@ -90,6 +116,12 @@ void ELCP_Motor_SetSpeed(ELCP_Motor_ID id, float speed_percent) {
   if (speed_percent < -100.0f)
     speed_percent = -100.0f;
   motor->state.current_speed_pct = speed_percent;
+
+  // Remember the last commanded direction; it is used while coasting
+  if (speed_percent > 0.0f)
+    motor->last_dir = 1;
+  else if (speed_percent < 0.0f)
+    motor->last_dir = -1;
 
   // Direction from the sign of the speed: + = CW, - = CCW
   bool ccw = (speed_percent < 0.0f);
@@ -142,42 +174,29 @@ void ELCP_Motor_SetPulsesPerRev(ELCP_Motor_ID id, float pulses_per_rev) {
 }
 
 /**
-  * @brief  Handles one FB pulse; updates the motor's pulse count.
-  * @param  motor     Motor that raised the interrupt
-  * @param  GPIO_Pin  Pin that triggered the EXTI (must match the motor's FB pin)
+  * @brief  Accounts for one FB edge captured by the timer hardware.
+  * @param  motor  Motor whose capture channel fired
   * @retval None
+  * @note   Edges are counted even when the commanded speed is 0 so that
+  *         coast-down (inertia) keeps updating pulse_count; the direction then
+  *         comes from the last commanded direction.
   */
-static void Motor_FB_IRQHandler(ELCP_Motor_t *motor, uint16_t GPIO_Pin) {
-  if (GPIO_Pin == motor->fb_pin) {
-    // Only count clean high levels
-    if (HAL_GPIO_ReadPin(motor->fb_port, motor->fb_pin) != GPIO_PIN_SET) {
-      return;
-    }
-
-    // Ignore pulses while stopped
-    if (motor->state.current_speed_pct == 0.0f) {
-      return;
-    }
-
-    // Single-channel FB: direction comes from the commanded speed
-    if (motor->state.current_speed_pct > 0.0f) {
-      motor->state.pulse_count++;
-    } else {
-      motor->state.pulse_count--;
-    }
+static void Motor_FB_Edge(ELCP_Motor_t *motor) {
+  // Single-channel FB: direction comes from the command, never from the signal
+  int8_t dir;
+  if (motor->state.current_speed_pct > 0.0f) {
+    dir = 1;
+  } else if (motor->state.current_speed_pct < 0.0f) {
+    dir = -1;
+  } else {
+    dir = motor->last_dir;  // coasting: keep the last commanded direction
   }
-}
 
-/**
-  * @brief  Handles one FB pulse; updates the motor's pulse count.
-  * @param  id        Motor that raised the interrupt
-  * @param  GPIO_Pin  Pin that triggered the EXTI (must match the motor's FB pin)
-  * @retval None
-  */
-void ELCP_Motor_FB_IRQHandler(ELCP_Motor_ID id, uint16_t GPIO_Pin) {
-  if (id >= ELCP_MOTOR_COUNT)
-    return;
-  Motor_FB_IRQHandler(motors[id], GPIO_Pin);
+  if (dir == 0) {
+    return;  // no direction has ever been commanded
+  }
+
+  motor->state.pulse_count += dir;
 }
 
 /**
@@ -194,23 +213,34 @@ void ELCP_Motor_UpdatePPS(ELCP_Motor_ID id) {
   if (elapsed < 1000U)
     return;
 
-  int32_t delta = motor->state.pulse_count - motor->last_pps_count;
+  // Snapshot once so an edge arriving mid-update is not dropped
+  int32_t count = motor->state.pulse_count;
+  int32_t delta = count - motor->last_pps_count;
   motor->last_pps_tick = now;
-  motor->last_pps_count = motor->state.pulse_count;
+  motor->last_pps_count = count;
 
   float seconds = (float)elapsed / 1000.0f;
-  motor->state.pps = (float)delta / seconds;                 // magnitude
+  motor->state.pps = (float)delta / seconds;                 // signed, pulses/s
   motor->state.rpm = (float)delta * 60.0f / (motor->pulses_per_rev * seconds);
 }
 
 /**
-  * @brief  Routes EXTI callbacks from stm32f4xx_it.c to the matching motor.
-  * @param  GPIO_Pin  Pin that triggered the EXTI
+  * @brief  Routes input-capture events from the timer ISRs to the matching motor.
+  * @param  htim  Timer handle that raised the capture event
   * @retval None
+  * @note   Only the FB channel is used; other channels of the same timer are
+  *         ignored so the shared TIM12 counter can also drive J1's PWM.
   */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-  if (motor_J1.initialized && GPIO_Pin == motor_J1.fb_pin)
-    ELCP_Motor_FB_IRQHandler(MOTOR_J1, GPIO_Pin);
-  else if (motor_J3.initialized && GPIO_Pin == motor_J3.fb_pin)
-    ELCP_Motor_FB_IRQHandler(MOTOR_J3, GPIO_Pin);
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
+  for (uint32_t i = 0U; i < (uint32_t)ELCP_MOTOR_COUNT; i++) {
+    ELCP_Motor_t *motor = motors[i];
+    if (!motor->initialized || motor->fb_htim != htim)
+      continue;
+    if (htim->Channel != motor->fb_active_channel)
+      continue;
+    // Clear a stale over-capture so the flag does not stay latched
+    __HAL_TIM_CLEAR_FLAG(htim, motor->fb_overcapture_flag);
+    Motor_FB_Edge(motor);
+    return;
+  }
 }

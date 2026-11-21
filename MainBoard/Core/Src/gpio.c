@@ -51,20 +51,21 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, LED_D5_Pin|LED_D6_Pin|LED_D7_Pin|LED_D8_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14|TFT_DC_Pin|TFT_CS_Pin|ELCP_J1_DIR_Pin
+                          |ELCP_J3_DIR_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, LED_D6_Pin|LED_D7_Pin|LED_D8_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TFT_RES_GPIO_Port, TFT_RES_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, TFT_DC_Pin|TFT_CS_Pin|ELCP_J1_DIR_Pin|ELCP_J3_DIR_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TFT_BL_GPIO_Port, TFT_BL_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : LED_D5_Pin LED_D6_Pin LED_D7_Pin LED_D8_Pin
+  /*Configure GPIO pins : PC14 LED_D6_Pin LED_D7_Pin LED_D8_Pin
                            TFT_DC_Pin TFT_CS_Pin */
-  GPIO_InitStruct.Pin = LED_D5_Pin|LED_D6_Pin|LED_D7_Pin|LED_D8_Pin
+  GPIO_InitStruct.Pin = GPIO_PIN_14|LED_D6_Pin|LED_D7_Pin|LED_D8_Pin
                           |TFT_DC_Pin|TFT_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -115,31 +116,12 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : ELCP_J1_FB_Pin */
-  GPIO_InitStruct.Pin = ELCP_J1_FB_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(ELCP_J1_FB_GPIO_Port, &GPIO_InitStruct);
-
   /*Configure GPIO pins : ELCP_J1_DIR_Pin ELCP_J3_DIR_Pin */
   GPIO_InitStruct.Pin = ELCP_J1_DIR_Pin|ELCP_J3_DIR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : ELCP_J3_FB_Pin */
-  GPIO_InitStruct.Pin = ELCP_J3_FB_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(ELCP_J3_FB_GPIO_Port, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 
