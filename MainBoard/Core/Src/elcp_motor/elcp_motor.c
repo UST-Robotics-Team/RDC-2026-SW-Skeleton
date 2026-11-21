@@ -20,6 +20,12 @@ typedef struct {
   uint32_t fb_active_channel;   /**< HAL_TIM_ACTIVE_CHANNEL_x reported in the callback */
   uint32_t fb_overcapture_flag; /**< TIM_FLAG_CCxOF for that channel */
   IRQn_Type fb_irqn;            /**< Timer interrupt that services the capture */
+  GPIO_TypeDef *fb_port;        /**< FB pin, read in the ISR to tell rising from falling */
+  uint16_t fb_pin;
+
+  /* FB pulse-width filter (ISR only). Idle is HIGH, a real pulse is a LOW of >= ELCP_FB_MIN_LOW_US. */
+  bool fb_low;                  /**< A falling edge was seen and its rising edge is pending */
+  uint32_t fb_fall_cyc;         /**< DWT->CYCCNT at that falling edge */
 
   float pulses_per_rev; /**< FB pulses per output-shaft revolution (rpm scaling) */
 
@@ -43,6 +49,8 @@ static ELCP_Motor_t motor_J1 = {
     .fb_active_channel = HAL_TIM_ACTIVE_CHANNEL_2,
     .fb_overcapture_flag = TIM_FLAG_CC2OF,
     .fb_irqn = TIM8_BRK_TIM12_IRQn,  // TIM12 shares TIM8_BRK's vector on F4
+    .fb_port = ELCP_J1_FB_GPIO_Port,
+    .fb_pin = ELCP_J1_FB_Pin,
     .invert_dir = false,
     .invert_pwm = false,
     .pulses_per_rev = ELCP_FB_PULSES_PER_REV
@@ -58,6 +66,8 @@ static ELCP_Motor_t motor_J3 = {
     .fb_active_channel = HAL_TIM_ACTIVE_CHANNEL_3,
     .fb_overcapture_flag = TIM_FLAG_CC3OF,
     .fb_irqn = TIM3_IRQn,
+    .fb_port = ELCP_J3_FB_GPIO_Port,
+    .fb_pin = ELCP_J3_FB_Pin,
     .invert_dir = false,
     .invert_pwm = false,
     .pulses_per_rev = ELCP_FB_PULSES_PER_REV
@@ -65,6 +75,21 @@ static ELCP_Motor_t motor_J3 = {
 
 /* Order matches the ELCP_Motor_ID enum (index 0 = MOTOR_J1). */
 static ELCP_Motor_t *const motors[ELCP_MOTOR_COUNT] = {&motor_J1, &motor_J3};
+
+/* DWT cycle counter = microsecond time base for the FB filter. Neither capture timer can
+ * time 1 ms: TIM12 wraps every 100 us (it is J1's PWM), TIM3 every ~780 us. CYCCNT runs at
+ * SystemCoreClock (168 MHz, ~6 ns) and wraps every ~25 s; unsigned subtraction handles that. */
+static uint32_t cyc_per_us = 1U;
+
+static void Dwt_Init(void) {
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  if (!(DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk)) {
+    DWT->CYCCNT = 0U;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+  }
+  cyc_per_us = SystemCoreClock / 1000000U;
+  if (cyc_per_us == 0U) cyc_per_us = 1U;
+}
 
 /**
   * @brief  Initializes a motor: clears its state, starts PWM output and arms
@@ -83,6 +108,10 @@ void ELCP_Motor_Init(ELCP_Motor_ID id) {
   motor->last_dir = 0;
   motor->last_pps_tick = HAL_GetTick();
   motor->last_pps_count = 0;
+  motor->state.noise_count = 0;
+  motor->state.last_low_us = 0;
+  motor->fb_low = false;
+  Dwt_Init();
 
   HAL_TIM_PWM_Start(motor->htim, motor->tim_channel);
   ELCP_Motor_Stop(id);
@@ -96,6 +125,9 @@ void ELCP_Motor_Init(ELCP_Motor_ID id) {
    * ever missing from the generated code. */
   HAL_NVIC_SetPriority(motor->fb_irqn, 0, 0);
   HAL_NVIC_EnableIRQ(motor->fb_irqn);
+  /* The filter needs both edges. Set here rather than in tim.c so CubeMX regeneration
+   * (ICPolarity = RISING in the .ioc) cannot undo it. */
+  __HAL_TIM_SET_CAPTUREPOLARITY(motor->fb_htim, motor->fb_channel, TIM_INPUTCHANNELPOLARITY_BOTHEDGE);
   (void)HAL_TIM_IC_Start_IT(motor->fb_htim, motor->fb_channel);
 }
 
@@ -200,6 +232,38 @@ static void Motor_FB_Edge(ELCP_Motor_t *motor) {
 }
 
 /**
+  * @brief  Pulse-width noise filter, called on every FB edge (both edges are captured).
+  * @param  motor  Motor whose capture channel fired
+  * @retval None
+  * @note   FB idles HIGH, so a pulse is HIGH -> LOW -> HIGH. The edge type is taken from the
+  *         pin level (the timer's ICFilter has already delayed the capture by its filter
+  *         time, so the pin has settled). Low time = rise - fall, in microseconds from DWT->CYCCNT:
+  *           >= ELCP_FB_MIN_LOW_US  -> valid, counted once (on the rising edge)
+  *           <  ELCP_FB_MIN_LOW_US  -> noise, dropped (noise_count++)
+  *         A rising edge with no falling edge before it is ignored.
+  */
+static void Motor_FB_Filter(ELCP_Motor_t *motor) {
+  uint32_t now = DWT->CYCCNT;
+  bool high = HAL_GPIO_ReadPin(motor->fb_port, motor->fb_pin) == GPIO_PIN_SET;
+
+  if (!high) {                 // falling edge: pulse (or glitch) starts
+    motor->fb_low = true;
+    motor->fb_fall_cyc = now;
+    return;
+  }
+  if (!motor->fb_low)          // rising edge without a fall: nothing to measure
+    return;
+  motor->fb_low = false;
+
+  uint32_t low_us = (now - motor->fb_fall_cyc) / cyc_per_us;
+  motor->state.last_low_us = low_us;
+  if (low_us >= ELCP_FB_MIN_LOW_US)
+    Motor_FB_Edge(motor);
+  else
+    motor->state.noise_count++;
+}
+
+/**
   * @brief  Publishes pps and rpm into the motor state (refreshes once per second).
   * @param  id  Motor to update
   * @retval None
@@ -240,7 +304,7 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
       continue;
     // Clear a stale over-capture so the flag does not stay latched
     __HAL_TIM_CLEAR_FLAG(htim, motor->fb_overcapture_flag);
-    Motor_FB_Edge(motor);
+    Motor_FB_Filter(motor);
     return;
   }
 }
