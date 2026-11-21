@@ -27,15 +27,16 @@ typedef enum {
  */
 typedef struct {
   volatile float current_speed_pct; /**< Commanded speed, -100.0 (full CCW) to +100.0 (full CW) */
-  volatile int32_t pulse_count;     /**< Signed FB pulse count */
-  volatile float pps;               /**< FB pulses per second (updated once per second) */
+  volatile int32_t pulse_count;     /**< Signed FB pulse count (keeps counting while coasting) */
+  volatile float pps;               /**< Signed FB pulses per second (updated once per second) */
   volatile float rpm;               /**< Signed speed in RPM (updated once per second) */
 } ELCP_Motor_State_t;
 
 /* ----- Core API ----- */
 
 /**
-  * @brief  Initializes a motor: clears its state and starts PWM output.
+  * @brief  Initializes a motor: clears its state, starts PWM output and arms
+  *         the FB input-capture channel.
   * @param  id  Motor to initialize (MOTOR_J1 or MOTOR_J3)
   * @retval None
   */
@@ -71,15 +72,28 @@ const ELCP_Motor_State_t *ELCP_Motor_GetState(ELCP_Motor_ID id);
   */
 void ELCP_Motor_SetPulsesPerRev(ELCP_Motor_ID id, float pulses_per_rev);
 
-/* ----- Background / ISR (wired up in stm32f4xx_it.c) ----- */
-
-/**
-  * @brief  Handles one FB pulse; updates the motor's pulse count.
-  * @param  id        Motor that raised the interrupt
-  * @param  GPIO_Pin  Pin that triggered the EXTI (must match the motor's FB pin)
-  * @retval None
-  */
-void ELCP_Motor_FB_IRQHandler(ELCP_Motor_ID id, uint16_t GPIO_Pin);
+/* ----- Background / ISR (input capture) -----
+ *
+ * FB is measured by the timer input-capture channels configured in CubeMX:
+ *   J1: PB15 -> TIM12_CH2 (AF9, rising edge, ICFilter = 10)
+ *   J3: PC8  -> TIM3_CH3  (AF2, rising edge, ICFilter = 10)
+ *
+ * ELCP_Motor_Init() starts each capture channel. The TIM3 and TIM8_BRK_TIM12
+ * interrupt handlers are the CubeMX-generated ones in stm32f4xx_it.c (with the
+ * NVIC entries in tim.c) and simply call HAL_TIM_IRQHandler(); edges reach the
+ * library through HAL_TIM_IC_CaptureCallback() (overridden in elcp_motor.c).
+ * No application code is needed for counting.
+ *
+ * Edges keep being counted while the commanded speed is 0 (coast-down/inertia):
+ * the sign then comes from the last non-zero commanded direction.
+ *
+ * Note: because J1's capture channel lives on TIM12, the same counter that
+ * generates the 10 kHz PWM on TIM12_CH1 also serves the capture. Its counter
+ * therefore wraps every 100 us, which is fine for counting edges but useless
+ * for timing a 1-30 ms tach period. The library counts edges and derives speed
+ * from a time window; do not add period measurement without moving the PWM to
+ * another timer.
+ */
 
 /**
   * @brief  Publishes pps and rpm into the motor state (refreshes once per second).
